@@ -197,12 +197,66 @@ with open(os.path.join(OUT, 'stops_physical.csv'), 'w', newline='', encoding='ut
         w.writerow(['POINT(%.6f %.6f)' % (x / 1e6, y / 1e6)] + [r[f] for f in pf]); k += 1
 print(' physical stops', k, 'of', len(prows))
 
+# ---------- route stops (stops assigned to routes) ----------
+# Bus RoutesS.r0 is a Raima file of 76-byte point records (type 7). Offsets from the record start:
+#   0x1E STOP_ID, 0x26 lon, 0x2A lat (int32 *1e6), 0x3A ROUTE_ID, 0x3E LINK_ID (Streets ID the stop sits on),
+#   0x42 PASS_COUNT (int16), 0x44 MILEPOST (float32, km along the route), 0x48 PHYSICAL_STOP_ID (Bus RoutesP STOP_ID).
+# Checked against a TransCAD shapefile export: ROUTE_ID, PASS_COUNT, MILEPOST and PHYSICAL_S match 100%.
+# Bus RoutesS.bin also holds deleted rows (first bytes overwritten); only rows whose STOP_ID is in the .r0 are kept.
+print('route stops...')
+rb0 = np.fromfile(os.path.join(SRC, 'Bus RoutesS.r0'), dtype=np.uint8)
+starts = []
+for s in range(4):
+    A = np.frombuffer(rb0[s:s + (len(rb0) - s) // 4 * 4].tobytes(), dtype='<i4')
+    k = np.where((A[:-1] >= -180000000) & (A[:-1] <= 180000000) & (A[1:] >= -90000000) & (A[1:] <= 90000000) & (A[:-1] != 0))[0]
+    st = 4 * k + s - 0x26
+    st = st[(st >= 0) & (st + 0x4C <= len(rb0))]
+    st = st[(rb0[st] == 7) & (rb0[st + 1] == 0)]
+    starts.append(st)
+st = np.unique(np.concatenate(starts))
+def i32(o): return rb0[o[:, None] + np.arange(4)].copy().view('<i4').ravel()
+def i16(o): return rb0[o[:, None] + np.arange(2)].copy().view('<i2').ravel()
+def f32(o): return rb0[o[:, None] + np.arange(4)].copy().view('<f4').ravel()
+RS = dict(STOP_ID=i32(st + 0x1E), lon=i32(st + 0x26), lat=i32(st + 0x2A), ROUTE_ID=i32(st + 0x3A),
+          LINK_ID=i32(st + 0x3E), PASS_COUNT=i16(st + 0x42), MILEPOST=f32(st + 0x44), PHYSICAL_STOP_ID=i32(st + 0x48))
+ok = np.isin(RS['ROUTE_ID'], list(rattr.keys()))          # drop false positives: route must exist
+RS = {k: v[ok] for k, v in RS.items()}
+_, first = np.unique(RS['STOP_ID'], return_index=True)    # one record per stop id
+RS = {k: v[np.sort(first)] for k, v in RS.items()}
+print(' route stops in .r0:', len(RS['STOP_ID']))
+
+sf_, srows_ = read_ffb(os.path.join(SRC, 'Bus RoutesS'))
+ids_ok = set(RS['STOP_ID'].tolist())
+sattr = {r['STOP_ID']: r for r in srows_ if r['STOP_ID'] in ids_ok}
+print(' stop table rows matched:', len(sattr), 'of', len(srows_), '(the rest are deleted rows)')
+sextra = [f for f in sf_ if f != 'STOP_ID']
+rkeep = [f for f in ('Route_Name', 'Makat', 'Shilut', 'Direction', 'Alt', 'OpName') if f in rf]
+
+order = np.lexsort((RS['MILEPOST'], RS['ROUTE_ID']))
+seq = np.zeros(len(order), int); dist = [None] * len(order)
+prev_r = None; n = 0
+for pos, i in enumerate(order):
+    r = RS['ROUTE_ID'][i]
+    n = n + 1 if r == prev_r else 1; prev_r = r; seq[i] = n
+    if pos + 1 < len(order) and RS['ROUTE_ID'][order[pos + 1]] == r:
+        dist[i] = round(float(RS['MILEPOST'][order[pos + 1]] - RS['MILEPOST'][i]), 3)
+with open(os.path.join(OUT, 'route_stops.csv'), 'w', newline='', encoding='utf-8') as fo:
+    w = csv.writer(fo)
+    w.writerow(['WKT', 'STOP_ID', 'ROUTE_ID', 'SEQ', 'MILEPOST', 'DIST_TO_NEXT', 'PASS_COUNT', 'PHYSICAL_STOP_ID', 'LINK_ID']
+               + ['route_' + f for f in rkeep] + sextra)
+    for i in order:
+        a = sattr.get(int(RS['STOP_ID'][i]), {}); ra = rattr.get(int(RS['ROUTE_ID'][i]), {})
+        w.writerow(['POINT(%.6f %.6f)' % (RS['lon'][i] / 1e6, RS['lat'][i] / 1e6), int(RS['STOP_ID'][i]), int(RS['ROUTE_ID'][i]),
+                    int(seq[i]), round(float(RS['MILEPOST'][i]), 4), dist[i], int(RS['PASS_COUNT'][i]),
+                    int(RS['PHYSICAL_STOP_ID'][i]), int(RS['LINK_ID'][i])]
+                   + [ra.get(f) for f in rkeep] + [a.get(f) for f in sextra])
+
 # ---------- GeoPackage (datum-corrected to true WGS84) ----------
 gpkg = os.path.join(OUT, 'RS_corrected_WGS84.gpkg')
 if os.path.exists(gpkg): os.remove(gpkg)
 oo = ['-oo', 'GEOM_POSSIBLE_NAMES=WKT', '-oo', 'KEEP_GEOM_COLUMNS=NO', '-oo', 'AUTODETECT_TYPE=YES',
       '-oo', 'AUTODETECT_SIZE_LIMIT=0', '-s_srs', 'EPSG:4141', '-t_srs', 'EPSG:4326']
-for i, (name, gt) in enumerate([('routes', 'MULTILINESTRING'), ('stops_physical', 'POINT'), ('streets', 'MULTILINESTRING')]):
+for i, (name, gt) in enumerate([('routes', 'MULTILINESTRING'), ('route_stops', 'POINT'), ('stops_physical', 'POINT'), ('streets', 'MULTILINESTRING')]):
     cmd = [OGR] + (['-f', 'GPKG'] if i == 0 else ['-update']) + [gpkg, os.path.join(OUT, name + '.csv'), '-nln', name, '-nlt', gt] + oo
     subprocess.run(cmd, check=True)
 print('gpkg:', gpkg)

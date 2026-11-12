@@ -2,11 +2,12 @@
 
 [English](README.md)
 
-הסקריפט `transcad_export.py` קורא את הקבצים של TransCAD ישירות ובונה GeoPackage ב-WGS84 עם שלוש שכבות:
+הסקריפט `transcad_export.py` קורא את הקבצים של TransCAD ישירות ובונה GeoPackage ב-WGS84 עם ארבע שכבות:
 
 | שכבה | תוכן |
 |---|---|
 | `routes` | קווי האוטובוס, עם כל השדות של טבלת הקווים |
+| `route_stops` | התחנות לפי קו: שיוך כל תחנה לקו ולמקטע עליו, לפי הסדר (ראו למטה) |
 | `stops_physical` | התחנות הפיזיות |
 | `streets` | רשת הרחובות |
 
@@ -17,6 +18,7 @@
 - `Bus Routes.rts` ו-`Bus Routes.rtg`
 - `Bus RoutesR.bin` + `.DCB`: טבלת הקווים
 - `Bus RoutesP.bin` + `.DCB`: התחנות הפיזיות, עם השדות `LongitudeN`/`LatitudeN`
+- `Bus RoutesS.r0` ו-`Bus RoutesS.bin` + `.DCB`: התחנות לפי קו
 
 הסקריפט לא מתאים לשכבות נקודות או פוליגונים אחרות, למטריצות (`.mtx`), או לרשת מחוץ לישראל.
 
@@ -40,7 +42,7 @@ python transcad_export.py "C:\data\transcad_input" "C:\data\output"
 
 ## מה יוצא
 - `RS_corrected_WGS84.gpkg`: **זה הקובץ שמשתמשים בו.** הקואורדינטות שלו מתוקנות.
-- `routes.csv`, `stops_physical.csv`, `streets.csv`: קבצי ביניים עם עמודת WKT, בקואורדינטות הגולמיות של TransCAD, **לפני** תיקון הדאטום. לא לטעון אותם כ-WGS84.
+- `routes.csv`, `route_stops.csv`, `stops_physical.csv`, `streets.csv`: קבצי ביניים עם עמודת WKT, בקואורדינטות הגולמיות של TransCAD, **לפני** תיקון הדאטום. לא לטעון אותם כ-WGS84.
 
 ## חשוב לדעת
 - **תיקון דאטום:** TransCAD שומר את הקואורדינטות בדאטום ישראל 1993, לא ב-WGS84. בלי תיקון, הכול זז בכ-78 מטר. הסקריפט מתקן את זה אוטומטית, לפי אותו עיקרון כמו [israel_trancsad_fix](https://github.com/eithanwes/israel_trancsad_fix).
@@ -48,7 +50,17 @@ python transcad_export.py "C:\data\transcad_input" "C:\data\output"
   - `complete`: הקו שלם.
   - `filled_from_streets`: היו פערים, והם הושלמו במסלול הקצר ביותר על הרחובות, בלי להתחשב בחד-סטריות. כדאי לבדוק אותם בעין.
   - `partial`: נשארו פערים, והקו שבור.
-- **התחנות לפי קו (`Bus RoutesS`) עדיין לא מומרות.**
+- **שכבת `route_stops`:** כל רשומה היא תחנה של קו מסוים. השדות העיקריים:
+  - `ROUTE_ID`: הקו. מתחבר ל-`Route_ID` בשכבת `routes`.
+  - `SEQ`: מספר התחנה בקו, לפי הסדר.
+  - `MILEPOST`: המרחק מתחילת הקו, בק"מ.
+  - `DIST_TO_NEXT`: המרחק לתחנה הבאה, בק"מ. ריק בתחנה האחרונה.
+  - `LINK_ID`: מקטע הרחוב שהתחנה יושבת עליו. מתחבר ל-`ID` בשכבת `streets`.
+  - `PHYSICAL_STOP_ID`: התחנה הפיזית. מתחבר ל-`STOP_ID` בשכבת `stops_physical`.
+  - `PASS_COUNT`: כמה פעמים הקו עובר בתחנה.
+  - השדות `route_*` הם פרטי הקו, ושאר השדות (שם, כתובת, `StopActivity` ועוד) מגיעים מטבלת התחנות.
+
+  השדות `ROUTE_ID`, `MILEPOST`, `PASS_COUNT` ו-`PHYSICAL_STOP_ID` נבדקו מול ייצוא של TransCAD עצמו, והתאימו ב-100%.
 - **הפורמט פוענח בהנדסה לאחור.** גרסה אחרת של TransCAD יכולה לשבור את הסקריפט. אחרי כל הרצה כדאי לבדוק את ההודעות שהוא מדפיס: מספר הקטעים, מספר הקווים, ופילוח הקווים לפי שלמות.
 
 ## רישיון
