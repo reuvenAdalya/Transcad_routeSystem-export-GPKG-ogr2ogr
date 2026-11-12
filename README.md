@@ -42,10 +42,12 @@ A run takes a few minutes and needs about 800 MB free in the output folder.
 
 ## Output
 - `RS_corrected_WGS84.gpkg`: **the file to use.** Its coordinates are corrected.
-- `routes.csv`, `route_stops.csv`, `stops_physical.csv`, `streets.csv`: intermediate files with a WKT column, in TransCAD's raw coordinates, **before** the datum correction. Do not load them as WGS84.
+- `routes.csv`, `route_stops.csv`, `streets.csv`: intermediate files with a WKT column, in TransCAD's raw coordinates, **before** the datum correction. Do not load them as WGS84.
+- `stops_physical.csv`: an intermediate file that is already WGS84 (see "Datum correction" below).
 
 ## Good to know
 - **Datum correction:** TransCAD stores coordinates in the Israel 1993 datum, not WGS84. Without correction everything is off by about 78 m. The script corrects this automatically, on the same principle as [israel_trancsad_fix](https://github.com/eithanwes/israel_trancsad_fix).
+  - **Exception:** `stops_physical` takes its points from the `LongitudeN`/`LatitudeN` table fields, not from TransCAD geometry. Those fields are already WGS84, so this layer is not shifted. That's why a physical stop usually sits 5–6 m from its counterpart in `route_stops`: it's on the curb, while `route_stops` is snapped to the street centerline.
 - **`geom_status` field in the routes layer:**
   - `complete`: the route is whole.
   - `filled_from_streets`: gaps were filled with the shortest path over the streets, ignoring one-way restrictions. Worth checking by eye.

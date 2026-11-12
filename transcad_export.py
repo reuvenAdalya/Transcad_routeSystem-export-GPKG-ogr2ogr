@@ -10,6 +10,8 @@
 # Israel 1993 geographic (EPSG:4141), not WGS84. Read as WGS84 they are ~70-80 m off.
 # The CSVs keep the raw TransCAD coordinates; the GeoPackage is built with -s_srs EPSG:4141 -t_srs EPSG:4326,
 # which equals the plugin's chain (TransCAD TM -> treat as ITM EPSG:2039 -> WGS84).
+# Exception: stops_physical takes its points from the LongitudeN/LatitudeN attribute fields, which are already
+# true WGS84 (source data, not TransCAD geometry), so that layer is NOT shifted.
 import sys, os, struct, csv, math, heapq, subprocess
 import numpy as np
 
@@ -255,8 +257,11 @@ with open(os.path.join(OUT, 'route_stops.csv'), 'w', newline='', encoding='utf-8
 gpkg = os.path.join(OUT, 'RS_corrected_WGS84.gpkg')
 if os.path.exists(gpkg): os.remove(gpkg)
 oo = ['-oo', 'GEOM_POSSIBLE_NAMES=WKT', '-oo', 'KEEP_GEOM_COLUMNS=NO', '-oo', 'AUTODETECT_TYPE=YES',
-      '-oo', 'AUTODETECT_SIZE_LIMIT=0', '-s_srs', 'EPSG:4141', '-t_srs', 'EPSG:4326']
-for i, (name, gt) in enumerate([('routes', 'MULTILINESTRING'), ('route_stops', 'POINT'), ('stops_physical', 'POINT'), ('streets', 'MULTILINESTRING')]):
-    cmd = [OGR] + (['-f', 'GPKG'] if i == 0 else ['-update']) + [gpkg, os.path.join(OUT, name + '.csv'), '-nln', name, '-nlt', gt] + oo
+      '-oo', 'AUTODETECT_SIZE_LIMIT=0']
+shift = ['-s_srs', 'EPSG:4141', '-t_srs', 'EPSG:4326']   # TransCAD geometry -> true WGS84
+as_is = ['-a_srs', 'EPSG:4326']                          # attribute coordinates, already WGS84
+for i, (name, gt, srs) in enumerate([('routes', 'MULTILINESTRING', shift), ('route_stops', 'POINT', shift),
+                                     ('stops_physical', 'POINT', as_is), ('streets', 'MULTILINESTRING', shift)]):
+    cmd = [OGR] + (['-f', 'GPKG'] if i == 0 else ['-update']) + [gpkg, os.path.join(OUT, name + '.csv'), '-nln', name, '-nlt', gt] + oo + srs
     subprocess.run(cmd, check=True)
 print('gpkg:', gpkg)

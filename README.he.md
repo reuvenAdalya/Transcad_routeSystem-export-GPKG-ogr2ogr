@@ -42,10 +42,12 @@ python transcad_export.py "C:\data\transcad_input" "C:\data\output"
 
 ## מה יוצא
 - `RS_corrected_WGS84.gpkg`: **זה הקובץ שמשתמשים בו.** הקואורדינטות שלו מתוקנות.
-- `routes.csv`, `route_stops.csv`, `stops_physical.csv`, `streets.csv`: קבצי ביניים עם עמודת WKT, בקואורדינטות הגולמיות של TransCAD, **לפני** תיקון הדאטום. לא לטעון אותם כ-WGS84.
+- `routes.csv`, `route_stops.csv`, `streets.csv`: קבצי ביניים עם עמודת WKT, בקואורדינטות הגולמיות של TransCAD, **לפני** תיקון הדאטום. לא לטעון אותם כ-WGS84.
+- `stops_physical.csv`: קובץ ביניים שכבר ב-WGS84 (ראו "תיקון דאטום" למטה).
 
 ## חשוב לדעת
 - **תיקון דאטום:** TransCAD שומר את הקואורדינטות בדאטום ישראל 1993, לא ב-WGS84. בלי תיקון, הכול זז בכ-78 מטר. הסקריפט מתקן את זה אוטומטית, לפי אותו עיקרון כמו [israel_trancsad_fix](https://github.com/eithanwes/israel_trancsad_fix).
+  - **חריג:** בשכבה `stops_physical` המיקום נלקח מהשדות `LongitudeN`/`LatitudeN` שבטבלה, ולא מהגאומטריה של TransCAD. השדות האלה כבר ב-WGS84, ולכן השכבה הזאת לא מוזזת. בגלל זה תחנה פיזית נמצאת בדרך כלל כ-5–6 מטר מהתחנה המקבילה ב-`route_stops`: היא יושבת על המדרכה, ו-`route_stops` יושבת על ציר הרחוב.
 - **שדה `geom_status` בשכבת הקווים:**
   - `complete`: הקו שלם.
   - `filled_from_streets`: היו פערים, והם הושלמו במסלול הקצר ביותר על הרחובות, בלי להתחשב בחד-סטריות. כדאי לבדוק אותם בעין.
